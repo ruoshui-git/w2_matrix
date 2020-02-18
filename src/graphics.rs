@@ -1,12 +1,11 @@
+pub mod matrix;
 mod utils;
-mod matrix;
-
 
 use std::convert::Into;
 
+use matrix::Matrix;
+use std::io::{self, prelude::Write};
 use utils::{create_file, polar_to_xy};
-use std::io::{self, prelude::*};
-
 
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
@@ -22,11 +21,12 @@ pub struct PPMImg {
     height: u32,
     width: u32,
     depth: u16, // max = 2^16
+    pub x_wrap: bool,
+    pub y_wrap: bool,
     pub fg_color: RGB,
     pub bg_color: RGB,
     data: Vec<RGB>,
 }
-
 
 // impl constructor and exporter
 #[allow(dead_code)]
@@ -34,28 +34,24 @@ impl PPMImg {
     /// Createa new PPMImg
     /// Default fg color is white, bg_color is lack
     pub fn new(height: u32, width: u32, depth: u16) -> PPMImg {
+        let bg_color = RGB {
+            red: 0,
+            green: 0,
+            blue: 0,
+        };
         PPMImg {
             height,
             width,
             depth,
+            x_wrap: false,
+            y_wrap: false,
             fg_color: RGB {
                 red: depth,
                 green: depth,
                 blue: depth,
             },
-            bg_color: RGB {
-                red: 0,
-                green: 0,
-                blue: 0,
-            },
-            data: vec![
-                RGB {
-                    red: depth,
-                    green: depth,
-                    blue: depth,
-                };
-                (width * height).try_into().unwrap()
-            ],
+            bg_color,
+            data: vec![bg_color; (width * height).try_into().unwrap()],
         }
     }
 
@@ -92,20 +88,58 @@ impl PPMImg {
     }
 }
 
+#[allow(dead_code)]
+// clear
+impl PPMImg {
+    pub fn clear(&mut self) {
+        let bg = self.bg_color;
+        for d in self.data.iter_mut() {
+            *d = bg;
+        }
+    }
+}
+
 // implement point plotting
 impl PPMImg {
     pub fn plot(&mut self, x: i32, y: i32) -> () {
-        if x < 0
-            || y < 0
-            || x >= (self.width).try_into().unwrap()
-            || y >= (self.height).try_into().unwrap()
-        {
+        let (width, height) = (
+            self.width.try_into().unwrap(),
+            self.height.try_into().unwrap(),
+        );
+        if (!self.x_wrap && (x < 0 || x >= width)) || (!self.y_wrap && (y < 0 || y >= height)) {
             return ();
         }
+
+        let x = if x >= width {
+            x % width
+        } else if x < 0 {
+            let r = x % width;
+            if r != 0 {
+                r + width
+            } else {
+                r
+            }
+        } else {
+            x
+        };
+        let y = if y >= height {
+            y % height
+        } else if y < 0 {
+            let r = y % height;
+            if r != 0 {
+                r + height
+            } else {
+                r
+            }
+        } else {
+            y
+        };
+
         // now we know that x and y are positive, we can cast without worry
         let index = self.index(x as u32, y as u32);
         self.data[index] = self.fg_color;
     }
+
     fn index(&self, x: u32, y: u32) -> usize {
         (y * self.width as u32 + x).try_into().unwrap()
     }
@@ -126,7 +160,12 @@ impl PPMImg {
         };
 
         // force conversion into ints for processing & plotting
-        let (x0, y0, x1, y1) = (x0.round() as i32, y0.round() as i32, x1.round() as i32, y1.round() as i32);
+        let (x0, y0, x1, y1) = (
+            x0.round() as i32,
+            y0.round() as i32,
+            x1.round() as i32,
+            y1.round() as i32,
+        );
 
         // calculate  values and then truncate
         let (dy, ndx) = (y1 - y0, -(x1 - x0));
@@ -183,8 +222,7 @@ impl PPMImg {
 
             let mut d = 2 * -ndx - dy;
 
-            let (x_inc, mut x, ystart, yend, dy) = 
-            if dy > 0 {
+            let (x_inc, mut x, ystart, yend, dy) = if dy > 0 {
                 // octant 2
                 (1, x, y0, y1, dy)
             } else {
@@ -193,17 +231,14 @@ impl PPMImg {
                 (-1, x - ndx, y1, y0, -dy)
             };
 
-            for y in ystart..=yend
-            {
+            for y in ystart..=yend {
                 self.plot(x, y);
-                if d > 0
-                {
+                if d > 0 {
                     x += x_inc;
                     d -= 2 * dy;
                 }
                 d -= 2 * ndx;
             }
-            
         }
     }
 
@@ -279,10 +314,8 @@ impl Turtle {
         return self.img.fg_color;
     }
 
-    pub fn move_to(&mut self, x: f64, y:f64)
-    {
-        if self.pen_down
-        {
+    pub fn move_to(&mut self, x: f64, y: f64) {
+        if self.pen_down {
             self.img.draw_line(self.x as f64, self.y as f64, x, y);
         }
         self.x = x;
@@ -297,3 +330,25 @@ impl Turtle {
     }
 }
 
+// draw edge matrix
+impl PPMImg {
+    /// Draws an edge matrix
+    /// 
+    /// Number of edges must be a multiple of 2
+    pub fn render_edge_matrix(&mut self, m: &Matrix) {
+        
+        let mut iter = m.iter_by_row();
+        while let Some(point) = iter.next()
+        {
+            let (x0, y0, _z0) = (point[0], point[1], point[2]);
+            let (x1, y1, _z1) = match iter.next()
+            {
+                Some(p1) => (p1[0], p1[1], p1[2]),
+                None => panic!("Number of edges must be a multiple of 2"),
+            };
+
+            self.draw_line(x0, y0, x1, y1);
+        }
+
+    }
+}

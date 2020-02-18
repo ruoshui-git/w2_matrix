@@ -80,13 +80,23 @@ impl Matrix {
 #[allow(dead_code)]
 // row and col iter
 impl Matrix {
-    fn row_iter<'a>(&'a self, r: usize) -> impl Iterator<Item = &f64> {
+
+    /// Iterate over a certain row
+    pub fn row_iter<'a>(&'a self, r: usize) -> impl Iterator<Item = &f64> {
         let start = r * self.cols;
         self.data[start..start + self.cols].iter()
     }
 
-    fn col_iter<'a>(&'a self, c: usize) -> impl Iterator<Item = &f64> {
+    /// Iterate over a certain column
+    pub fn col_iter<'a>(&'a self, c: usize) -> impl Iterator<Item = &f64> {
         self.data.iter().skip(c).step_by(self.cols)
+    }
+
+    /// Interate over the matrix by row, one row at a time
+    /// 
+    /// Returns an iterator for the row
+    pub fn iter_by_row(&self) -> std::slice::Chunks<'_, f64> {
+        self.data.as_slice().chunks(self.cols)
     }
 }
 
@@ -115,7 +125,7 @@ impl Matrix {
 
     pub fn mul_mut_b(a: &Matrix, b: &mut Matrix) {
         *b = a.mul(b);
-        println!("result: {}", b);
+        // println!("result: {}", b);
     }
 }
 
